@@ -14,15 +14,21 @@ products_bp = Blueprint('products', __name__)
 def get_products():
     page = request.args.get('page', 1, type=int)
     limit = request.args.get('limit', 10, type=int)
-    q = request.args.get('q', '')
+    q = (request.args.get('q') or request.args.get('search') or '').strip()
     category_id = request.args.get('category_id', type=int)
     low_stock = request.args.get('low_stock', 'false').lower() == 'true'
 
-    query = Product.query
+    query = Product.query.outerjoin(Category, Product.category_id == Category.id)
     if q:
-        query = query.filter((Product.name.ilike(f'%{q}%')) | (Product.sku.ilike(f'%{q}%')))
+        for term in q.split():
+            pat = f'%{term}%'
+            query = query.filter(
+                (Product.name.ilike(pat)) |
+                (Product.sku.ilike(pat)) |
+                (Category.name.ilike(pat))
+            )
     if category_id:
-        query = query.filter_by(category_id=category_id)
+        query = query.filter(Product.category_id == category_id)
     if low_stock:
         query = query.filter(Product.quantity <= Product.reorder_threshold)
 

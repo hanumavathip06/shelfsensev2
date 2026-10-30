@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required, current_user
 from app.utils.auth import requires_permission, Permission
 from app.models import (
     PurchaseOrder, PurchaseOrderItem, StockMovement, Supplier, 
-    ProductLocation, StaffTask, Issue, User, AuditLog
+    ProductLocation, StaffTask, Issue, User, AuditLog, Product
 )
 from app.extensions import db
 from datetime import datetime, timezone
@@ -15,10 +15,8 @@ manager_bp = Blueprint('manager', __name__)
 @jwt_required()
 @requires_permission(Permission.ORDERS_APPROVE)
 def get_approvals(current_user):
-    # Draft POs that need approval (for Phase C, let's say 'pending_approval' or 'draft')
     pos = PurchaseOrder.query.filter(PurchaseOrder.status == 'pending_approval').all()
-    # Stock movements that need approval
-    movements = StockMovement.query.filter(StockMovement.status == 'pending_approval').all()
+    movements = StockMovement.query.filter(StockMovement.status == 'pending_approval').order_by(StockMovement.created_at.desc()).all()
     
     return jsonify({
         'purchase_orders': [{
@@ -28,6 +26,7 @@ def get_approvals(current_user):
             'created_by': po.created_by.name if po.created_by else 'System',
             'created_by_id': po.created_by_id,
             'status': po.status,
+            'created_at': po.created_at.isoformat() if po.created_at else None,
             'items': [{
                 'product_id': item.product_id,
                 'quantity': item.quantity,
@@ -40,10 +39,16 @@ def get_approvals(current_user):
         'stock_adjustments': [{
             'id': m.id,
             'product_id': m.product_id,
+            'product_name': m.product.name if m.product else f"Product #{m.product_id}",
+            'product_sku': m.product.sku if m.product else "",
             'change_qty': m.change_qty,
             'reason': m.reason,
+            'source_location_id': m.source_location_id,
+            'destination_location_id': m.destination_location_id,
             'performed_by': m.performed_by,
-            'status': m.status
+            'performed_by_name': m.performed_by_user.name if m.performed_by_user else f"User #{m.performed_by}",
+            'status': m.status,
+            'created_at': m.created_at.isoformat() if m.created_at else None
         } for m in movements]
     }), 200
 
@@ -51,10 +56,8 @@ def get_approvals(current_user):
 @jwt_required()
 @requires_permission(Permission.ORDERS_APPROVE)
 def approve_item(current_user, type, id):
-    data = request.get_json()
-    reason = data.get('reason')
-    if not reason:
-        return jsonify({'error': 'Mandatory reason missing'}), 400
+    data = request.get_json() or {}
+    reason = data.get('reason') or 'Approved by manager'
         
     if type == 'po':
         po = PurchaseOrder.query.get_or_404(id)
@@ -63,20 +66,46 @@ def approve_item(current_user, type, id):
         po.status = 'approved'
         po.approval_reason = reason
         db.session.commit()
-        return jsonify({'status': 'success'})
+        return jsonify({'status': 'success', 'message': 'Purchase order approved'})
     
-    elif type == 'adjustment':
+    elif type in ['adjustment', 'movement']:
         adj = StockMovement.query.get_or_404(id)
         adj.status = 'approved'
         adj.approval_reason = reason
         
-        # Apply the stock change
-        pl = ProductLocation.query.filter_by(product_id=adj.product_id, location_id=adj.source_location_id).first()
-        if pl:
+        loc_id = adj.source_location_id or adj.destination_location_id
+        if loc_id:
+            pl = ProductLocation.query.filter_by(product_id=adj.product_id, location_id=loc_id).first()
+            if not pl:
+                pl = ProductLocation(product_id=adj.product_id, location_id=loc_id, quantity=0)
+                db.session.add(pl)
             pl.quantity += adj.change_qty
             
+        if adj.reason == 'transfer' and adj.destination_location_id:
+            dest_pl = ProductLocation.query.filter_by(product_id=adj.product_id, location_id=adj.destination_location_id).first()
+            if not dest_pl:
+                dest_pl = ProductLocation(product_id=adj.product_id, location_id=adj.destination_location_id, quantity=0)
+                db.session.add(dest_pl)
+            dest_pl.quantity += abs(adj.change_qty)
+
+        product = Product.query.get(adj.product_id)
+        if product and adj.reason != 'transfer':
+            product.quantity += adj.change_qty
+            if product.quantity < 0:
+                product.quantity = 0
+
+        try:
+            from app.models import Notification
+            db.session.add(Notification(
+                user_id=adj.performed_by,
+                type='approval_decision',
+                message=f"Your stock movement of {adj.change_qty} units of {product.sku if product else ''} has been approved by {current_user.name}."
+            ))
+        except Exception:
+            pass
+
         db.session.commit()
-        return jsonify({'status': 'success'})
+        return jsonify({'status': 'success', 'message': 'Stock movement approved'})
         
     return jsonify({'error': 'Invalid approval type'}), 400
 
@@ -84,24 +113,34 @@ def approve_item(current_user, type, id):
 @jwt_required()
 @requires_permission(Permission.ORDERS_APPROVE)
 def reject_item(current_user, type, id):
-    data = request.get_json()
-    reason = data.get('reason')
-    if not reason:
-        return jsonify({'error': 'Mandatory reason missing'}), 400
+    data = request.get_json() or {}
+    reason = data.get('reason') or 'Rejected by manager'
         
     if type == 'po':
         po = PurchaseOrder.query.get_or_404(id)
         po.status = 'rejected'
         po.approval_reason = reason
         db.session.commit()
-        return jsonify({'status': 'success'})
+        return jsonify({'status': 'success', 'message': 'Purchase order rejected'})
     
-    elif type == 'adjustment':
+    elif type in ['adjustment', 'movement']:
         adj = StockMovement.query.get_or_404(id)
         adj.status = 'rejected'
         adj.approval_reason = reason
+
+        try:
+            product = Product.query.get(adj.product_id)
+            from app.models import Notification
+            db.session.add(Notification(
+                user_id=adj.performed_by,
+                type='approval_decision',
+                message=f"Your stock movement of {adj.change_qty} units of {product.sku if product else ''} was rejected by {current_user.name}. Reason: {reason}"
+            ))
+        except Exception:
+            pass
+
         db.session.commit()
-        return jsonify({'status': 'success'})
+        return jsonify({'status': 'success', 'message': 'Stock movement rejected'})
         
     return jsonify({'error': 'Invalid approval type'}), 400
 

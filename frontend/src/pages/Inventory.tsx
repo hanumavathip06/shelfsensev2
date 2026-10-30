@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Edit2, Trash2, ArrowUpDown } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, ArrowUpDown, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getProducts, getCategories, createProduct, updateProduct, deleteProduct, adjustStock } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,9 +14,18 @@ export function Inventory() {
   const isStaff = role === 'staff';
 
   const [page, setPage] = useState(1);
-  const [q, setQ] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [lowStockOnly, setLowStockOnly] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm.trim());
+      setPage(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<any>(null);
@@ -27,8 +36,8 @@ export function Inventory() {
   const [adjustReason, setAdjustReason] = useState('manual_adjustment');
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: ['products', page, q, categoryId, lowStockOnly],
-    queryFn: () => getProducts({ page, limit: 10, q, category_id: categoryId ? Number(categoryId) : undefined, low_stock: lowStockOnly }),
+    queryKey: ['products', page, debouncedSearch, categoryId, lowStockOnly],
+    queryFn: () => getProducts({ page, limit: 10, q: debouncedSearch, category_id: categoryId ? Number(categoryId) : undefined, low_stock: lowStockOnly }),
   });
 
   const { data: categoriesData } = useQuery({
@@ -128,14 +137,21 @@ export function Inventory() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" />
           <input
             type="text"
-            placeholder="Search by name or SKU..."
-            className="w-full pl-9 pr-4 py-2 rounded-md border border-border bg-surface text-primary focus:ring-2 focus:ring-accent focus:outline-none"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPage(1);
-            }}
+            placeholder="Search by name, SKU, or category..."
+            className="w-full pl-9 pr-8 py-2 rounded-md border border-border bg-surface text-primary focus:ring-2 focus:ring-accent focus:outline-none"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-secondary hover:text-primary p-0.5"
+              title="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <select
           className="w-full sm:w-48 px-3 py-2 rounded-md border border-border bg-surface text-primary focus:ring-2 focus:ring-accent focus:outline-none"

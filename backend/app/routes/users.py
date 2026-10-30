@@ -49,7 +49,7 @@ def get_user(id):
 @jwt_required()
 @requires_permission(Permission.USERS_MANAGE)
 def create_user():
-    data = request.get_json()
+    data = request.get_json() or {}
     errors = user_schema.validate(data)
     if errors:
         return api_error(str(errors), 400)
@@ -57,18 +57,28 @@ def create_user():
     if not data.get('password'):
         return api_error("Password is required", 400)
         
-    if User.query.filter_by(email=data['email']).first():
+    email = data['email'].strip().lower()
+    if User.query.filter_by(email=email).first():
         return api_error("Email already registered", 409)
 
     user = User(
-        name=data['name'],
-        email=data['email'],
+        name=data['name'].strip(),
+        email=email,
         password_hash=generate_password_hash(data['password']),
-        role=data.get('role', 'staff')
+        role=data.get('role', 'staff'),
+        location_id=data.get('location_id') or None,
+        is_active=True
     )
     db.session.add(user)
     db.session.commit()
-    return jsonify(user_schema.dump(user)), 201
+    return jsonify({
+        'id': user.id,
+        'name': user.name,
+        'email': user.email,
+        'role': user.role,
+        'location_id': user.location_id,
+        'is_active': user.is_active
+    }), 201
 
 @users_bp.route('/<int:id>', methods=['PUT'])
 @jwt_required()

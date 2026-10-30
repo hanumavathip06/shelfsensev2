@@ -5,6 +5,9 @@ class UserSchema(Schema):
     name = fields.Str(required=True, validate=validate.Length(min=1))
     email = fields.Email(required=True)
     role = fields.Str(validate=validate.OneOf(['admin', 'manager', 'staff']))
+    password = fields.Str(load_only=True)
+    location_id = fields.Int(allow_none=True)
+    is_active = fields.Bool(dump_only=True)
     created_at = fields.DateTime(dump_only=True)
 
 class CategorySchema(Schema):

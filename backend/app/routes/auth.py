@@ -105,3 +105,20 @@ def login():
             'role': user.role
         }
     }), 200
+
+@auth_bp.route('/me', methods=['GET'])
+@jwt_required()
+def get_current_user():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id)) if user_id else None
+    if not user or not user.is_active:
+        return jsonify({'error': 'User not found or inactive'}), 401
+    return jsonify({
+        'user': {
+            'id': user.id,
+            'name': user.name,
+            'email': user.email,
+            'role': user.role
+        }
+    }), 200
+

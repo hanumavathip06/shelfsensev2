@@ -17,36 +17,32 @@ type NavItem = {
 import { FEATURE_FLAGS } from '../../lib/features';
 
 const NAV_CONFIG: NavItem[] = [
-  // ── Main (visible to all, unless specified) ──
+  // ── Main ──
   { label: 'Dashboard', href: '/', icon: LayoutDashboard, requiredPermission: Permission.DASHBOARD_VIEW, section: 'main' },
   { label: 'Inventory', href: '/inventory', icon: Package, requiredPermission: Permission.INVENTORY_VIEW, section: 'main' },
-  { label: 'Stock Movements', href: '/movements', icon: Package, requiredPermission: Permission.MOVEMENT_RECORD, section: 'main' },
+  { label: 'Stock Movements', href: '/movements', icon: Package, requiredPermission: Permission.MOVEMENT_RECORD, section: 'main', visibleToRoles: ['manager', 'staff'] },
   
   // ── Staff-only items ──
   { label: 'Low Stock', href: '/low-stock', icon: AlertTriangle, requiredPermission: Permission.DASHBOARD_VIEW, section: 'main', visibleToRoles: ['staff'] },
   { label: 'Report Issue', href: '/report-issue', icon: AlertTriangle, requiredPermission: Permission.DASHBOARD_VIEW, section: 'main', visibleToRoles: ['staff'] },
   ...(FEATURE_FLAGS.ENABLE_MY_TASKS ? [{ label: 'My Tasks', href: '/my-tasks', icon: Package, requiredPermission: Permission.MOVEMENT_RECORD, section: 'main' as const, visibleToRoles: ['staff'] as Role[] }] : []),
 
-  // ── Manager/Admin items ──
-  ...(FEATURE_FLAGS.ENABLE_APPROVALS ? [{ label: 'Approvals', href: '/approvals', icon: AlertTriangle, requiredPermission: Permission.ORDERS_APPROVE, section: 'main' as const }] : []),
-  ...(FEATURE_FLAGS.ENABLE_PURCHASE_ORDERS ? [{ label: 'Purchase Orders', href: '/purchase-orders', icon: Package, requiredPermission: Permission.ORDERS_VIEW, section: 'main' as const }] : []),
-  ...(FEATURE_FLAGS.ENABLE_SUPPLIERS ? [{ label: 'Suppliers', href: '/suppliers', icon: Users, requiredPermission: Permission.SETTINGS_EDIT, section: 'main' as const }] : []),
-  { label: 'Reports', href: '/reports', icon: BarChart3, requiredPermission: Permission.REPORTS_VIEW, section: 'main' },
-  
-  // ── Manager-only items (Admin doesn't need these day-to-day operations) ──
-  { label: 'Team', href: '/team', icon: Users, requiredPermission: Permission.INVENTORY_EDIT, section: 'main', visibleToRoles: ['manager'] },
-  { label: 'Bulk Import', href: '/import', icon: UploadCloud, requiredPermission: Permission.IMPORTS_EXECUTE, section: 'main', visibleToRoles: ['manager'] },
+  // ── Manager items ──
+  ...(FEATURE_FLAGS.ENABLE_APPROVALS ? [{ label: 'Approvals', href: '/approvals', icon: AlertTriangle, requiredPermission: Permission.ORDERS_APPROVE, section: 'main' as const, visibleToRoles: ['manager'] as Role[] }] : []),
+  ...(FEATURE_FLAGS.ENABLE_PURCHASE_ORDERS ? [{ label: 'Purchase Orders', href: '/purchase-orders', icon: Package, requiredPermission: Permission.ORDERS_VIEW, section: 'main' as const, visibleToRoles: ['manager'] as Role[] }] : []),
+  ...(FEATURE_FLAGS.ENABLE_SUPPLIERS ? [{ label: 'Suppliers', href: '/suppliers', icon: Users, requiredPermission: Permission.SETTINGS_EDIT, section: 'main' as const, visibleToRoles: ['manager'] as Role[] }] : []),
+  { label: 'Reports', href: '/reports', icon: BarChart3, requiredPermission: Permission.REPORTS_VIEW, section: 'main', visibleToRoles: ['manager'] },
 
-  // ── AI & Analytics (Manager+) ──
-  { label: 'AI Forecast', href: '/forecast', icon: Brain, requiredPermission: Permission.FORECAST_VIEW, section: 'ai' },
-  { label: 'Smart Reorder', href: '/smart-reorder', icon: Zap, requiredPermission: Permission.FORECAST_VIEW, section: 'ai' },
-  { label: 'Classification', href: '/classification', icon: Grid3X3, requiredPermission: Permission.FORECAST_VIEW, section: 'ai' },
+  // ── AI & Analytics (Manager only) ──
+  { label: 'AI Forecast', href: '/forecast', icon: Brain, requiredPermission: Permission.FORECAST_VIEW, section: 'ai', visibleToRoles: ['manager'] },
+  { label: 'Smart Reorder', href: '/smart-reorder', icon: Zap, requiredPermission: Permission.FORECAST_VIEW, section: 'ai', visibleToRoles: ['manager'] },
+  { label: 'Classification', href: '/classification', icon: Grid3X3, requiredPermission: Permission.FORECAST_VIEW, section: 'ai', visibleToRoles: ['manager'] },
 
   // ── Administration (Admin only) ──
-  { label: 'Users', href: '/users', icon: Users, requiredPermission: Permission.USERS_MANAGE, section: 'admin' },
-  { label: 'System Settings', href: '/system-settings', icon: Settings, requiredPermission: Permission.SYSTEM_SETTINGS_EDIT, section: 'admin' },
-  { label: 'Audit Log', href: '/audit-log', icon: UploadCloud, requiredPermission: Permission.AUDIT_LOG_VIEW, section: 'admin' },
-  { label: 'Stores & Locations', href: '/locations', icon: Zap, requiredPermission: Permission.SYSTEM_SETTINGS_EDIT, section: 'admin' },
+  { label: 'Users', href: '/users', icon: Users, requiredPermission: Permission.USERS_MANAGE, section: 'admin', visibleToRoles: ['admin'] },
+  { label: 'System Settings', href: '/system-settings', icon: Settings, requiredPermission: Permission.SYSTEM_SETTINGS_EDIT, section: 'admin', visibleToRoles: ['admin'] },
+  { label: 'Audit Log', href: '/audit-log', icon: UploadCloud, requiredPermission: Permission.AUDIT_LOG_VIEW, section: 'admin', visibleToRoles: ['admin'] },
+  { label: 'Stores & Locations', href: '/locations', icon: Zap, requiredPermission: Permission.SYSTEM_SETTINGS_EDIT, section: 'admin', visibleToRoles: ['admin'] },
 ];
 
 export function Sidebar() {

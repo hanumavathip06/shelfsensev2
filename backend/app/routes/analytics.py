@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from sqlalchemy import func
-from app.models import Product, StockMovement, Notification, Category
+from app.models import Product, StockMovement, Notification, Category, PurchaseOrder
 from app.extensions import db
 from app.utils.auth import requires_permission, Permission
 
@@ -16,12 +16,17 @@ def get_summary():
     inventory_value = db.session.query(func.sum(Product.quantity * Product.unit_price)).scalar()
     low_stock_count = Product.query.filter(Product.quantity <= Product.reorder_threshold).count()
     pending_notifications = Notification.query.filter_by(is_read=False).count()
+    pending_approvals = (
+        PurchaseOrder.query.filter_by(status='pending_approval').count() +
+        StockMovement.query.filter_by(status='pending_approval').count()
+    )
     
     return jsonify({
         'total_skus': total_skus or 0,
         'inventory_value': float(inventory_value or 0),
         'low_stock_count': low_stock_count,
-        'pending_notifications': pending_notifications
+        'pending_notifications': pending_notifications,
+        'pending_approvals': pending_approvals
     })
 
 @analytics_bp.route('/trends', methods=['GET'])

@@ -85,6 +85,9 @@ def seed_data(reset=False):
                 )
                 db.session.add(user)
                 db.session.flush()
+            else:
+                user.role = u_data["role"]
+                user.name = u_data["name"]
             seeded_users[u_data["email"]] = user
 
         db.session.commit()

@@ -27,7 +27,10 @@ export const markNotificationRead = async (id: number) => (await api.patch(`/not
 
 // Users
 export const getUsers = async (params: { page?: number; limit?: number }) => (await api.get('/users', { params })).data;
+export const createUser = async (data: any) => (await api.post('/users', data)).data;
+export const deleteUser = async (id: number) => (await api.delete(`/users/${id}`)).data;
 export const updateUserRole = async ({ id, role }: { id: number; role: string }) => (await api.put(`/users/${id}`, { role })).data;
+export const getLocations = async () => (await api.get('/admin/locations')).data;
 
 // Forecast (ML)
 export const getForecast = async (productId: number, horizon = 30, model = 'ensemble') =>

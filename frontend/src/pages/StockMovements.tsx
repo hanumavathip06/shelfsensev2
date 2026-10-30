@@ -23,11 +23,13 @@ export function StockMovements() {
 
   const recordMutation = useMutation({
     mutationFn: recordStockMovement,
-    onSuccess: () => {
-      toast.success('Movement recorded successfully');
+    onSuccess: (res: any) => {
+      toast.success(res?.message || 'Movement recorded successfully');
       setSelectedProduct(null);
       setQty('');
       queryClient.invalidateQueries({ queryKey: ['my-activity'] });
+      queryClient.invalidateQueries({ queryKey: ['approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Failed to record movement');

@@ -39,7 +39,6 @@ ROLE_PERMISSIONS = {
         Permission.REPORTS_VIEW,
         Permission.FORECAST_VIEW,
         Permission.FORECAST_EDIT,
-        Permission.SETTINGS_EDIT,
         Permission.IMPORTS_EXECUTE
     },
     'staff': {
@@ -65,10 +64,7 @@ def requires_permission(permission: Permission):
         def decorator(*args, **kwargs):
             verify_jwt_in_request()
             claims = get_jwt()
-            user_role = claims.get('role', 'staff')
-            if not has_permission(user_role, permission):
-                return api_error(f"Forbidden: requires {permission.name}", 403)
-                
+            
             from app.models import User
             user_id = get_jwt_identity()
             user = User.query.get(int(user_id)) if user_id else None
@@ -79,6 +75,10 @@ def requires_permission(permission: Permission):
             token_session_version = claims.get('session_version')
             if token_session_version is not None and user.session_version != token_session_version:
                 return api_error("Session expired, revoked, or account deactivated.", 401)
+            
+            user_role = user.role or claims.get('role', 'staff')
+            if not has_permission(user_role, permission):
+                return api_error(f"Forbidden: requires {permission.name}", 403)
             
             if wants_current_user:
                 kwargs['current_user'] = user

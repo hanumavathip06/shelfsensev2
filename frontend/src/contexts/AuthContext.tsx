@@ -63,6 +63,8 @@ interface AuthContextType {
   hasPermission: (permission: Permission) => boolean;
 }
 
+import api from '../lib/axios';
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -76,7 +78,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
-    // any future sync logic
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    api.get('/auth/me')
+      .then((res) => {
+        if (res.data?.user) {
+          const freshUser = res.data.user;
+          setUser((prev) => {
+            if (!prev || prev.role !== freshUser.role || prev.name !== freshUser.name || prev.email !== freshUser.email) {
+              localStorage.setItem('user', JSON.stringify(freshUser));
+              return freshUser;
+            }
+            return prev;
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to sync auth user profile:', err);
+      });
   }, []);
 
   const login = (token: string, userData: User) => {

@@ -1,7 +1,7 @@
 from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, current_user
 from app.utils.auth import requires_permission, Permission
-from app.models import StaffTask, CycleCount, Issue, Product, StockMovement, ProductLocation
+from app.models import StaffTask, CycleCount, Issue, Product, StockMovement, ProductLocation, Location, Notification, User
 from app.extensions import db
 from datetime import datetime, timezone
 
@@ -41,59 +41,93 @@ def update_task_status(current_user, task_id):
 @jwt_required()
 @requires_permission(Permission.MOVEMENT_RECORD)
 def record_stock_movement(current_user):
-    data = request.get_json()
+    data = request.get_json() or {}
     product_id = data.get('product_id')
     change_qty = data.get('change_qty')
     reason = data.get('reason') # inbound, outbound, transfer
     destination_location_id = data.get('destination_location_id')
     
-    if not current_user.location_id:
-        return jsonify({'error': 'You do not have an assigned location'}), 400
+    if not product_id or not change_qty or not reason:
+        return jsonify({'error': 'Missing required fields'}), 400
         
-    pl = ProductLocation.query.filter_by(product_id=product_id, location_id=current_user.location_id).first()
+    change_qty = int(change_qty)
+    product = Product.query.get(product_id)
+    if not product:
+        return jsonify({'error': 'Product not found'}), 404
+
+    location_id = current_user.location_id
+    if not location_id:
+        first_loc = Location.query.first()
+        if first_loc:
+            location_id = first_loc.id
+            current_user.location_id = location_id
+            db.session.commit()
+        else:
+            return jsonify({'error': 'No warehouse locations available in system'}), 400
+
+    pl = ProductLocation.query.filter_by(product_id=product_id, location_id=location_id).first()
     if not pl:
-        # Create stock location record if it doesn't exist
-        pl = ProductLocation(product_id=product_id, location_id=current_user.location_id, quantity=0)
+        pl = ProductLocation(product_id=product_id, location_id=location_id, quantity=0)
         db.session.add(pl)
-    
-    if reason == 'outbound' or reason == 'transfer':
+
+    is_staff = current_user.role == 'staff'
+
+    if reason in ['outbound', 'transfer']:
         if pl.quantity < abs(change_qty):
             return jsonify({'error': 'Insufficient stock in your location'}), 400
-            
-        pl.quantity -= abs(change_qty)
+        
         movement = StockMovement(
             product_id=product_id,
             change_qty=-abs(change_qty),
             reason=reason,
-            source_location_id=current_user.location_id,
+            source_location_id=location_id,
             destination_location_id=destination_location_id if reason == 'transfer' else None,
-            performed_by=current_user.id
+            performed_by=current_user.id,
+            status='pending_approval' if is_staff else 'approved'
         )
         db.session.add(movement)
-        
-        # If transfer, add to destination
-        if reason == 'transfer' and destination_location_id:
-            dest_pl = ProductLocation.query.filter_by(product_id=product_id, location_id=destination_location_id).first()
-            if not dest_pl:
-                dest_pl = ProductLocation(product_id=product_id, location_id=destination_location_id, quantity=0)
-                db.session.add(dest_pl)
-            dest_pl.quantity += abs(change_qty)
-            
+
+        if not is_staff:
+            pl.quantity -= abs(change_qty)
+            product.quantity -= abs(change_qty)
+            if product.quantity < 0: product.quantity = 0
+            if reason == 'transfer' and destination_location_id:
+                dest_pl = ProductLocation.query.filter_by(product_id=product_id, location_id=destination_location_id).first()
+                if not dest_pl:
+                    dest_pl = ProductLocation(product_id=product_id, location_id=destination_location_id, quantity=0)
+                    db.session.add(dest_pl)
+                dest_pl.quantity += abs(change_qty)
+
     elif reason == 'inbound':
-        pl.quantity += abs(change_qty)
         movement = StockMovement(
             product_id=product_id,
             change_qty=abs(change_qty),
             reason='inbound',
-            destination_location_id=current_user.location_id,
-            performed_by=current_user.id
+            source_location_id=location_id,
+            destination_location_id=location_id,
+            performed_by=current_user.id,
+            status='pending_approval' if is_staff else 'approved'
         )
         db.session.add(movement)
+
+        if not is_staff:
+            pl.quantity += abs(change_qty)
+            product.quantity += abs(change_qty)
     else:
         return jsonify({'error': 'Invalid reason'}), 400
-        
+
+    if is_staff:
+        managers = User.query.filter_by(role='manager', is_active=True).all()
+        for m in managers:
+            db.session.add(Notification(
+                user_id=m.id,
+                type='pending_approval',
+                message=f"Staff {current_user.name} submitted a {reason} movement of {abs(change_qty)}x {product.sku} for approval."
+            ))
+
     db.session.commit()
-    return jsonify({'status': 'success'}), 201
+    msg = 'Stock movement submitted to manager for approval' if is_staff else 'Movement recorded successfully'
+    return jsonify({'status': 'success', 'message': msg, 'movement_status': movement.status, 'id': movement.id}), 201
 
 @staff_bp.route('/cycle-counts', methods=['POST'])
 @jwt_required()
